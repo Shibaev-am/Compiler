@@ -1,0 +1,11 @@
+int aa(int a) {
+    if (int i = 1) {}
+}
+int main() {
+}
+
+----
+
+int main() {
+    ++a+++b;
+}
