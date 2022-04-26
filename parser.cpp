@@ -4,6 +4,7 @@
 //
 #include <iostream>
 #include <vector>
+#include <map>
 
 int count_of_lexems = -1;
 struct lexem{
@@ -13,6 +14,121 @@ struct lexem{
 lexem curr_lexem;
 
 std::vector<lexem> Lexems;
+struct Variable{
+    std::string name = "int";
+    std::string type;
+};
+
+struct Array{
+    std::string name = "int";
+    std::string type;
+    int dimension;
+    std::vector<int> sizes;
+};
+
+struct Function{
+    std::string name = "int";
+    std::string type;
+    int count_of_parameters;
+    std::map<std::string, std::string> types;
+    //std::vector<std::string> types;
+};
+
+struct TID{
+    TID* prev_tid;
+    std::map<std::string, Variable> vars;
+    std::map<std::string, Array> arrays;
+    std::map<std::string, Function> functions;
+
+};
+
+TID* curr_tid = nullptr;
+Variable curr_variable;
+Array curr_array;
+Function curr_function;
+
+bool check_array() {
+    if (curr_tid->arrays[curr_array.name].name == "int" &&
+        curr_tid->vars[curr_array.name].name == "int" &&
+        curr_tid->functions[curr_array.name].name == "int") {
+        return true;
+    } else {
+        return false;
+    }
+
+}
+
+bool check_variable() {
+    if (curr_tid->arrays[curr_variable.name].name == "int" &&
+        curr_tid->vars[curr_variable.name].name == "int" &&
+            curr_tid->functions[curr_variable.name].name == "int") {
+        return true;
+    } else {
+        return false;
+    }
+}
+bool check_function() {
+    if (curr_tid->arrays[curr_function.name].name == "int" &&
+        curr_tid->vars[curr_function.name].name == "int" &&
+        curr_tid->functions[curr_function.name].name == "int") {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+void add_variable() {
+    if (check_variable()) {
+        curr_tid->vars[curr_variable.name] = curr_variable;
+    } else {
+        std::string error = "Переменная " + curr_variable.name +
+                            " несколько раз инициализирована в одном блоке";
+        throw error;
+    }
+}
+void add_array() {
+    if (check_array()) {
+        curr_tid->arrays[curr_array.name] = curr_array;
+    } else {
+        std::string error = "Переменная " + curr_array.name +
+                            " несколько раз инициализирована в одном блоке";
+        throw error;
+    }
+}
+void add_function() {
+    if (check_function()) {
+        curr_tid->functions[curr_function.name] = curr_function;
+    } else {
+        std::string error = "Переменная " + curr_function.name +
+                            " несколько раз инициализирована в одном блоке";
+        throw error;
+    }
+}
+
+void add_tid() {
+    //
+    TID* new_tid = new TID;
+    new_tid->prev_tid = curr_tid;
+    curr_tid = new_tid;
+    //
+}
+void delete_tid() {
+    //
+    TID* new_tid = curr_tid->prev_tid;
+    delete curr_tid;
+    curr_tid = new_tid;
+    //
+}
+
+std::string get_type(Array arr) {
+    std::string type = "";
+    type = arr.type;
+    type += "[]";
+    type += std::to_string(arr.dimension);
+    return type;
+}
+
+
 
 
 std::string type(int num) {
@@ -164,7 +280,9 @@ void Program() {
         throw curr_lexem;
     }
     get_next();
+    add_tid();
     Block();
+    delete_tid();
     return;
 }
 
@@ -178,12 +296,25 @@ void GlobalDescription() {
             }
             prev_lexem();
         }
+        std::string type, name;
         Type();
+
+        //
+        prev_lexem();
+        type = curr_lexem.lex;
+        get_next();
+        //
+
         if (curr_lexem.type == -1) {
             curr_lexem.lex = "Missing function 'int main'";
             throw curr_lexem;
         }
         Name();
+
+        prev_lexem();
+        name = curr_lexem.lex;
+        get_next();
+
         if (curr_lexem.type == -1) {
             curr_lexem.lex = "Missing function 'int main'";
             throw curr_lexem;
@@ -192,16 +323,22 @@ void GlobalDescription() {
             prev_lexem();
             prev_lexem();
             Function();
+            //
+            add_function();
+            //
+            //curr_tid->functions[curr_function.name] = curr_function;
         } else {
             prev_lexem();
             prev_lexem();
             Description();
+            //curr_tid->functions[curr_function.name] = curr_function;
         }
     }
 
 }
 
 void Block() {
+
     if (curr_lexem.lex != "{") {
         curr_lexem.lex = "Block must start with '{'";
         throw curr_lexem;
@@ -219,9 +356,11 @@ void Block() {
 
     }
     get_next();
+
 }
 
 void Description() {
+    std::string type, name;
     if (!is_type()) {
         curr_lexem.lex = "Missing type when initializing variable";
         throw curr_lexem;
@@ -235,13 +374,36 @@ void Description() {
             throw curr_lexem;
         }
         get_next();
+        //
+        add_array();
+        //
+        //curr_tid->arrays[arr]
         return;
     }
+
+    //
+    prev_lexem();
+    type = curr_lexem.lex;
+    get_next();
+    //
+
     Name();
+
+    //
+    prev_lexem();
+    name = curr_lexem.lex;
+    get_next();
+    curr_variable.name = name;
+    curr_variable.type = type;
+    add_variable();
+    //
+
     if (curr_lexem.lex == "=") {
         get_next();
         Expression();
     }
+
+
     while (true) {
         if (curr_lexem.type == -1) {
             curr_lexem.lex = "Expected ';' after initialization if variable(s)";
@@ -256,6 +418,16 @@ void Description() {
             throw curr_lexem;
         }
         Name();
+
+        //
+        prev_lexem();
+        name = curr_lexem.lex;
+        get_next();
+        curr_variable.name = name;
+        curr_variable.type = type;
+        add_variable();
+        //
+
         if (curr_lexem.lex == "=") {
             get_next();
             Expression();
@@ -270,9 +442,25 @@ void Description() {
     }
 }
 
+
 void Function() {
+
     Type();
+
+    //
+    prev_lexem();
+    curr_function.type = curr_lexem.lex;
+    get_next();
+    //
+
     Name();
+
+    //
+    prev_lexem();
+    curr_function.name = curr_lexem.lex;
+    get_next();
+    //
+
     if (curr_lexem.lex != "(") {
         curr_lexem.lex = "Function parameters must be in '(' and ')'";
         throw curr_lexem;
@@ -280,9 +468,12 @@ void Function() {
     get_next();
     if (curr_lexem.lex == ")") {
         get_next();
+        add_tid();
         Block();
+        delete_tid();
         return;
     }
+    add_tid();
     FormalParameters();
     while (true) {
         if (curr_lexem.type == -1) {
@@ -302,6 +493,7 @@ void Function() {
     if (curr_lexem.lex == ")") {
         get_next();
         Block();
+        delete_tid();
         return;
     }
     curr_lexem.lex = "Function parameters must be in '(' and ')'";
@@ -310,25 +502,48 @@ void Function() {
 }
 
 void FormalParameters () {
+    std::string type;
     if ( !(curr_lexem.lex == "int" || curr_lexem.lex == "double" || curr_lexem.lex == "bool" ||
            curr_lexem.lex == "string" || curr_lexem.lex == "char")) {
         curr_lexem.lex = "Formal parameter has no type";
         throw  curr_lexem;
     }
     get_next();
+
+    prev_lexem();
+    type = curr_lexem.lex;
+    get_next();
+
     if (curr_lexem.lex == "[") {
         prev_lexem();
         DescriptionOfArray();
+        add_array();
+        curr_function.types[curr_array.name] = get_type(curr_array);
+        //curr_function.types.push_back(get_type(curr_array));
         return;
     }
+
     Name();
+
+    prev_lexem();
+    curr_variable.name = curr_lexem.lex;
+    curr_variable.type = type;
+    get_next();
+
+
+
     if (curr_lexem.type == -1) {
         curr_lexem.lex = "Function parameters must be in '(' and ')'";
         throw curr_lexem;
     }
+
+    add_variable();
+    curr_function.types[curr_variable.name] = curr_variable.type;
+    //curr_function.types.push_back()
     if (curr_lexem.lex == "=") {
         get_next();
         Expression();
+
     }
 }
 
@@ -354,9 +569,15 @@ void Initialization() {
 
 void DescriptionOfArray() {
     Type();
+
+    prev_lexem();
+    curr_array.type = curr_lexem.lex;
+    get_next();
+    int k = 0;
     if (curr_lexem.lex != "[") {
         throw curr_lexem;
     }
+    ++k;
     get_next();
     Expression();
     if (curr_lexem.lex != "]") {
@@ -370,6 +591,7 @@ void DescriptionOfArray() {
         if (curr_lexem.lex != "[") {
             break;
         }
+        ++k;
         get_next();
         Expression();
         if (curr_lexem.lex != "]") {
@@ -378,6 +600,10 @@ void DescriptionOfArray() {
         get_next();
     }
     Name();
+    prev_lexem();
+    curr_array.name = curr_lexem.lex;
+    get_next();
+    curr_array.dimension = k;
     return;
 }
 
@@ -484,7 +710,9 @@ void ConditionalOperator() {
         throw curr_lexem;
     }
     get_next();
+    add_tid();
     Block();
+    delete_tid();
     while (true) {
         if (curr_lexem.lex != "elseif") {
             break;
@@ -892,6 +1120,7 @@ void AnySymbol() {
 }
 
 void FOR() {
+    add_tid();
     if (curr_lexem.lex != "for") {
         curr_lexem.lex = "Unknown loop operator, expected 'for' operator";
         throw curr_lexem;
@@ -939,10 +1168,11 @@ void FOR() {
         get_next();
     }
     Block();
-
+    delete_tid();
 }
 
 void WHILE() {
+    add_tid();
     if (curr_lexem.lex != "while") {
         curr_lexem.lex = "Unknown loop operator, expected 'while' operator";
         throw curr_lexem;
@@ -962,6 +1192,7 @@ void WHILE() {
     if (curr_lexem.lex == ")") {
         get_next();
         Block();
+        delete_tid();
         return;
     }
     curr_lexem.lex = "Operator execution conditions must be in '(' and ')'";
@@ -974,7 +1205,9 @@ void DOWHILE() {
         throw curr_lexem;
     }
     get_next();
+    add_tid();
     Block();
+    delete_tid();
     if (curr_lexem.lex != "while") {
         curr_lexem.lex = "Unknown loop operator, expected 'dowhile' operator";
         throw curr_lexem;
@@ -1030,6 +1263,7 @@ void BREAK() {
 }
 
 void FOREACH() {
+    add_tid();
     if (curr_lexem.lex != "foreach") {
         curr_lexem.lex = "Unknown loop operator, expected 'foreach' operator";
         throw curr_lexem;
@@ -1040,8 +1274,22 @@ void FOREACH() {
         throw curr_lexem;
     }
     get_next();
+    std::string type, name;
+
     Type();
+
+    prev_lexem();
+    curr_variable.type = curr_lexem.lex;
+    get_next();
+
     Name();
+
+    prev_lexem();
+    curr_variable.name = curr_lexem.lex;
+    get_next();
+
+    add_variable();
+
     if (curr_lexem.lex != "in") {
         curr_lexem.lex = "Incorrect structure of the 'foreach' operator, "
                          "missing 'in'";
@@ -1055,10 +1303,12 @@ void FOREACH() {
     }
     get_next();
     Block();
+    delete_tid();
     return;
 }
 
 void ELSEIF() {
+    add_tid();
     if (curr_lexem.lex != "elseif") {
         curr_lexem.lex = "Unknown conditional operator, expected 'elseif'";
         throw curr_lexem;
@@ -1076,16 +1326,19 @@ void ELSEIF() {
     }
     get_next();
     Block();
+    delete_tid();
     return;
 }
 
 void ELSE() {
+    add_tid();
     if (curr_lexem.lex != "else") {
         curr_lexem.lex = "Unknown conditional operator, expected 'else'";
         throw curr_lexem;
     }
     get_next();
     Block();
+    delete_tid();
     return;
 }
 
@@ -1121,7 +1374,10 @@ void Parser(std::vector<std::vector<std::pair<int, std::string>>> ans) {
         }
     }
     get_next();
+    curr_tid = new TID;
+    curr_tid->prev_tid = nullptr;
     Program();
+    delete curr_tid;
 }
 
 
