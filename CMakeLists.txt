@@ -3,4 +3,4 @@ project(Compiler)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_executable(Compiler main.cpp cmake-build-debug/lexer.cpp parser.cpp cmake-build-debug/semantics.cpp)
+add_executable(Compiler main.cpp lexer.cpp parser.cpp cmake-build-debug/semantics.cpp)
