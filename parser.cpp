@@ -57,7 +57,6 @@ bool check_array() {
     }
 
 }
-
 bool check_variable() {
     if (curr_tid->arrays[curr_variable.name].name == "int" &&
         curr_tid->vars[curr_variable.name].name == "int" &&
@@ -76,7 +75,6 @@ bool check_function() {
         return false;
     }
 }
-
 void add_variable() {
     if (check_variable()) {
         curr_tid->vars[curr_variable.name] = curr_variable;
@@ -103,6 +101,21 @@ void add_function() {
                             " несколько раз инициализирована в одном блоке";
         throw error;
     }
+}
+
+void check_name(std::string name) {
+    TID* temp_tid = curr_tid;
+    while (temp_tid != nullptr) {
+        if (temp_tid->vars[name].name == "int" and
+            temp_tid->arrays[name].name == "int" and
+            temp_tid->functions[name].name == "int") {
+            temp_tid = temp_tid->prev_tid;
+        } else {
+            return;
+        }
+    }
+    std::string error = "Переменная " + name + " не инициализирована";
+    throw error;
 }
 
 void add_tid() {
@@ -738,13 +751,26 @@ void InputOperator() {
         throw curr_lexem;
     }
     get_next();
+
     Name();
+    std::string name;
+
+    prev_lexem();
+    name = curr_lexem.lex;
+    get_next();
+    check_name(name);
+
     while (true) {
         if (curr_lexem.lex != ",") {
             break;
         }
         get_next();
         Name();
+
+        prev_lexem();
+        name = curr_lexem.lex;
+        get_next();
+        check_name(name);
     }
     if (curr_lexem.lex != ")") {
         curr_lexem.lex = "Operator parameters must be in '(' and ')'";
@@ -789,6 +815,12 @@ void Expression() {
     }*/
     if (curr_lexem.type == 2) {
         //имя
+        std::string name;
+        //prev_lexem();
+        name = curr_lexem.lex;
+        //get_next();
+        check_name(name);
+
         get_next();
         if (curr_lexem.lex == "=") {
             Initialization();
@@ -916,6 +948,13 @@ bool  is_MultiplicationOperation() {
 void Expression6() {
     if (curr_lexem.type == 2) {
         //имя
+
+        std::string name;
+        //prev_lexem();
+        name = curr_lexem.lex;
+        //get_next();
+        check_name(name);
+
         get_next();
         if (curr_lexem.lex == "[") {
             prev_lexem();
@@ -963,6 +1002,13 @@ void Atom() {
         return;
     }
     Name();
+
+    std::string name;
+    prev_lexem();
+    name = curr_lexem.lex;
+    get_next();
+    check_name(name);
+
     if (curr_lexem.lex == "(") {
         prev_lexem();
         FunctionCall();
@@ -981,6 +1027,13 @@ void Increment() {
 
 void Indexing() {
     Name();
+
+    std::string name;
+    prev_lexem();
+    name = curr_lexem.lex;
+    get_next();
+    check_name(name);
+
     if (curr_lexem.lex != "[") {
         curr_lexem.lex = "To refer to an element of an array, "
                          "use the operator '[' and ']'";
@@ -1025,6 +1078,13 @@ void Const() {
 
 void FunctionCall() {
     Name();
+
+    std::string name;
+    prev_lexem();
+    name = curr_lexem.lex;
+    get_next();
+    check_name(name);
+
     if (curr_lexem.lex != "(") {
         curr_lexem.lex = "Function parameters must be in '(' and ')'";
         throw curr_lexem;
@@ -1297,6 +1357,13 @@ void FOREACH() {
     }
     get_next();
     Name();
+
+    //std::string name;
+    prev_lexem();
+    name = curr_lexem.lex;
+    get_next();
+    check_name(name);
+
     if (curr_lexem.lex != ")") {
         curr_lexem.lex = "Operator execution conditions must be in '(' and ')'";
         throw curr_lexem;
