@@ -5,6 +5,8 @@
 #include <iostream>
 #include <vector>
 #include <map>
+#include <set>
+#include <stack>
 
 int count_of_lexems = -1;
 struct lexem{
@@ -12,6 +14,8 @@ struct lexem{
     std::string lex;
 };
 lexem curr_lexem;
+bool is_now_func = false;
+std::string func_type = "";
 
 std::vector<lexem> Lexems;
 struct Variable{
@@ -30,7 +34,8 @@ struct Function{
     std::string name = "int";
     std::string type;
     int count_of_parameters;
-    std::map<std::string, std::string> types;
+    std::vector<std::string> types;
+    //std::map<std::string, std::string> types;
     //std::vector<std::string> types;
 };
 
@@ -42,10 +47,30 @@ struct TID{
 
 };
 
+
+
 TID* curr_tid = nullptr;
 Variable curr_variable;
 Array curr_array;
-Function curr_function;
+Function curr_function, temp_func;
+std::string get_type(Array arr);
+Function find_function(std::string name);
+
+void add_tid() {
+    //
+    TID* new_tid = new TID;
+    new_tid->prev_tid = curr_tid;
+    curr_tid = new_tid;
+    //
+}
+void delete_tid() {
+    //
+    TID* new_tid = curr_tid->prev_tid;
+    delete curr_tid;
+    curr_tid = new_tid;
+    //
+}
+
 
 bool check_array() {
     if (curr_tid->arrays[curr_array.name].name == "int" &&
@@ -78,6 +103,8 @@ bool check_function() {
 void add_variable() {
     if (check_variable()) {
         curr_tid->vars[curr_variable.name] = curr_variable;
+        curr_variable.name = "int";
+        curr_variable.type = "";
     } else {
         std::string error = "Переменная " + curr_variable.name +
                             " несколько раз инициализирована в одном блоке";
@@ -87,6 +114,11 @@ void add_variable() {
 void add_array() {
     if (check_array()) {
         curr_tid->arrays[curr_array.name] = curr_array;
+        curr_array.name = "int";
+        curr_array.type = "";
+        curr_array.dimension = -1;
+        curr_array.sizes.clear();
+
     } else {
         std::string error = "Переменная " + curr_array.name +
                             " несколько раз инициализирована в одном блоке";
@@ -95,7 +127,12 @@ void add_array() {
 }
 void add_function() {
     if (check_function()) {
+        curr_function.count_of_parameters = curr_function.types.size();
         curr_tid->functions[curr_function.name] = curr_function;
+        curr_function.name = "int";
+        curr_function.type = "";
+        curr_function.count_of_parameters = 0;
+        curr_function.types.clear();
     } else {
         std::string error = "Переменная " + curr_function.name +
                             " несколько раз инициализирована в одном блоке";
@@ -118,20 +155,230 @@ void check_name(std::string name) {
     throw error;
 }
 
-void add_tid() {
-    //
-    TID* new_tid = new TID;
-    new_tid->prev_tid = curr_tid;
-    curr_tid = new_tid;
-    //
+std::stack<std::string> types;
+std::string curr_type;
+
+void add_to_stack_of_types(std::string name) {
+    TID* temp_tid = curr_tid;
+    std::string type = "";
+    while (temp_tid != nullptr) {
+        if (temp_tid->vars[name].name != "int") {
+            type = temp_tid->vars[name].type;
+            types.push(type);
+            return;
+        } else if (temp_tid->arrays[name].name != "int") {
+            type = get_type(temp_tid->arrays[name]);
+            types.push(type);
+            return;
+        } else if (temp_tid->functions[name].name != "int") {
+            type = temp_tid->functions[name].type;
+            types.push(type);
+            return;
+        } else {
+            temp_tid = temp_tid->prev_tid;
+        }
+    }
 }
-void delete_tid() {
-    //
-    TID* new_tid = curr_tid->prev_tid;
-    delete curr_tid;
-    curr_tid = new_tid;
-    //
+
+
+
+bool is_array(std::string s) {
+    for (int i = 0; i < s.size(); ++i) {
+        if (s[i] == '[') {
+            return true;
+        }
+    }
+    return false;
 }
+
+std::string array_after_indexing(std::string s) {
+    std::string ans = "";
+    int i = 0;
+    for (; i < s.size(); ++i) {
+        if (s[i] == '[') {
+            break;
+        } else {
+            ans += s[i];
+        }
+    }
+    i += 2;
+    std::string num = "";
+    for (; i < s.size(); ++i) {
+        num += s[i];
+    }
+    int number = 0;
+    int pow = 1;
+    for (int i = num.size() - 1; i >= 0; --i) {
+        number += (num[i] - '0') * pow;
+        pow *= 10;
+    }
+    --number;
+    if (number == 0) {
+        //types.push(ans);
+        return ans;
+    }
+    ans += "[]";
+    ans += std::to_string(number);
+    //types.push(ans);
+    return ans;
+}
+
+
+void match_types(std::vector<std::string> arr_types, std::string operation) {
+    if (operation == "[]") {
+       std::string temp = arr_types[0];
+       if (temp == "string") {
+           types.push("char");
+           return;
+       } else if (is_array(temp)) {
+           std::string new_arr = array_after_indexing(temp);
+           types.push(new_arr);
+           return;
+       } else {
+           std::string error = "Attempt to index a non-indexed type";
+           throw error;
+       }
+    } else if (operation == "=") {
+        std::string first = arr_types[1];
+        std::string second = arr_types[0];
+        if (first == second) {
+            types.push(first);
+            return;
+        } else if ( (first == "int" and second == "double")
+                or (first == "double" and second == "int")
+                or (first == "int" and second == "bool")
+                or (first == "bool" and second == "int")
+                or (first == "int" and second == "char")
+                or (first == "char" and second == "int")) {
+            types.push(first);
+            return;
+        } else if (first == "string" and second == "anystring") {
+            types.push(first);
+        } else if (first == "char" and second == "symbol") {
+            types.push(first);
+        } else {
+            std::string error = "Attempt to index a non-indexed type";
+            throw error;
+        }
+    } else if (operation == "++") {
+        std::string first = arr_types[0];
+        if (first == "int" or first == "double" or first == "char" or first == "bool") {
+            types.push(first);
+            return;
+        }  else {
+            std::string error = "Attempt to index a non-indexed type";
+            throw error;
+        }
+    } else if (operation == "!") {
+        std::string first = arr_types[0];
+        if (first == "bool") {
+            types.push(first);
+            return;
+        }  else {
+            std::string error = "Attempt to index a non-indexed type";
+            throw error;
+        }
+    } else if (operation == "in") {
+        std::string first = arr_types[1];
+        std::string second = arr_types[0];
+        if (first == "char" && second == "string") {
+            return;
+        } else if (is_array(second) and first == array_after_indexing(second)) {
+            return;
+        } else {
+            std::string error = "Attempt to index a non-indexed type";
+            throw error;
+        }
+    } else if (operation == "%=" || operation == "^=" || operation == "%"
+        || operation == "^") {
+        std::string first = arr_types[1];
+        std::string second = arr_types[0];
+        if (first == "int" and second == "int") {
+            types.push("int");
+            return;
+        } else {
+            std::string error = "Attempt to index a non-indexed type";
+            throw error;
+        }
+    } else if (operation == "*=" || operation == "*"
+        || operation == "/=" || operation == "/" || operation == "-="
+        || operation == "-") {
+        std::string first = arr_types[1];
+        std::string second = arr_types[0];
+        if ( (first == "int" or first == "double" or first == "bool") and
+                (second == "int" or second == "double" or second == "bool")){
+            types.push(first);
+            return;
+        } else {
+            std::string error = "Attempt to index a non-indexed type";
+            throw error;
+        }
+
+    } else if (operation == "+=" || operation == "+") {
+        std::string first = arr_types[1];
+        std::string second = arr_types[0];
+        if (first == "string" and (second == "string" or
+            second == "char" or second == "anystring" or second == "symbol")) {
+            types.push("string");
+            return;
+        } else if ( (first == "int" or first == "double" or first == "bool") and
+                    (second == "int" or second == "double" or
+                    second == "bool" or second == "char" or second == "symbol")){
+            types.push(first);
+            return;
+        } else {
+            std::string error = "Attempt to index a non-indexed type";
+            throw error;
+        }
+    } else if (operation == ">=" || operation == ">" ||
+        operation == "<=" || operation == "<" || operation == "==" ||
+        operation == "!=") {
+        std::string first = arr_types[1];
+        std::string second = arr_types[0];
+
+        if (first == second) {
+            types.push("bool");
+            return;
+        } else if ( (first == "int" or first == "double" or first == "bool") and
+             (second == "int" or second == "double" or second == "bool")){
+            types.push("bool");
+            return;
+        } else {
+            std::string error = "Attempt to index a non-indexed type";
+            throw error;
+        }
+    } else if (operation == "()") {
+        std::string name = arr_types[0];
+        temp_func = find_function(name);
+        int i = 0;
+        int j = arr_types.size() - 1;
+        for (int k = 1; k < arr_types.size(); ++k) {
+            if (temp_func.types[i] == "int" and
+                (arr_types[j] == "double" or arr_types[j] == "char"
+                or arr_types[j] == "bool")) {
+
+            } else if (temp_func.types[i] == "double" and
+                       (arr_types[j] == "int" or arr_types[j] == "char"
+                        or arr_types[j] == "bool")) {
+
+            } else if (temp_func.types[i] == "bool" and
+                       (arr_types[j] == "int" or arr_types[j] == "char"
+                        or arr_types[j] == "double")) {
+
+            } else if (temp_func.types[i] == "char" and
+                       (arr_types[j] == "int" or arr_types[j] == "double")) {
+
+            } else if (arr_types[j] != temp_func.types[i]) {
+                std::string err = "function parameter type mismatch";
+                throw err;
+            }
+            ++i;
+            --j;
+        }
+        types.push(temp_func.type);
+    }
+}
+
 
 std::string get_type(Array arr) {
     std::string type = "";
@@ -140,9 +387,6 @@ std::string get_type(Array arr) {
     type += std::to_string(arr.dimension);
     return type;
 }
-
-
-
 
 std::string type(int num) {
     if (num == 1) return "SERVICE_NAMES";
@@ -154,7 +398,16 @@ std::string type(int num) {
     if (num == 7) return "ROUND_BRACKETS";
 }
 
-
+Function find_function(std::string name) {
+    TID* temp = curr_tid;
+    while (temp != nullptr) {
+        if (temp->functions[name].name != "int") {
+            return temp->functions[name];
+        } else {
+            temp = temp->prev_tid;
+        }
+    }
+}
 
 void get_next() {
     ++count_of_lexems;
@@ -263,6 +516,8 @@ void ELSEIF();
 void ELSE();
 void OutputElement();
 void Name();
+
+
 
 
 /*if (curr_lexem.type == -1) {
@@ -414,6 +669,19 @@ void Description() {
     if (curr_lexem.lex == "=") {
         get_next();
         Expression();
+        if (types.empty()) {
+            std::string error = "error";
+            throw error;
+        }
+        std::string second = types.top();
+        types.pop();
+        match_types({second, type}, "=");
+        if (types.empty()) {
+            std::string error = "error";
+            throw error;
+        } else {
+            types.pop();
+        }
     }
 
 
@@ -444,6 +712,19 @@ void Description() {
         if (curr_lexem.lex == "=") {
             get_next();
             Expression();
+            if (types.empty()) {
+                std::string error = "error";
+                throw error;
+            }
+            std::string second = types.top();
+            types.pop();
+            match_types({second, type}, "=");
+            if (types.empty()) {
+                std::string error = "error";
+                throw error;
+            } else {
+                types.pop();
+            }
         }
     }
     if (curr_lexem.lex == ";") {
@@ -457,12 +738,13 @@ void Description() {
 
 
 void Function() {
-
+    is_now_func = true;
     Type();
 
     //
     prev_lexem();
     curr_function.type = curr_lexem.lex;
+    func_type = curr_lexem.lex;
     get_next();
     //
 
@@ -530,8 +812,10 @@ void FormalParameters () {
     if (curr_lexem.lex == "[") {
         prev_lexem();
         DescriptionOfArray();
+        Array ar = curr_array;
         add_array();
-        curr_function.types[curr_array.name] = get_type(curr_array);
+        curr_function.types.push_back(get_type(ar));
+        //curr_function.types[curr_array.name] = get_type(curr_array);
         //curr_function.types.push_back(get_type(curr_array));
         return;
     }
@@ -551,7 +835,8 @@ void FormalParameters () {
     }
 
     add_variable();
-    curr_function.types[curr_variable.name] = curr_variable.type;
+    curr_function.types.push_back(type);
+    //curr_function.types[curr_variable.name] = curr_variable.type;
     //curr_function.types.push_back()
     if (curr_lexem.lex == "=") {
         get_next();
@@ -597,6 +882,12 @@ void DescriptionOfArray() {
         throw curr_lexem;
     }
     get_next();
+    if (types.empty()) {
+        std::string s = "Error";
+        throw s;
+    } else {
+        types.pop();
+    }
     while (true) {
         if (curr_lexem.type == -1) {
             throw curr_lexem;
@@ -611,6 +902,12 @@ void DescriptionOfArray() {
             throw curr_lexem;
         }
         get_next();
+        if (types.empty()) {
+            std::string s = "Error";
+            throw s;
+        } else {
+            types.pop();
+        }
     }
     Name();
     prev_lexem();
@@ -650,6 +947,7 @@ void Operator() {
     }
     if (curr_lexem.lex == "return") {
         RETURN();
+
         if (curr_lexem.lex != ";") {
             curr_lexem.lex = "Expected ';' after 'return' operator";
             throw curr_lexem;
@@ -671,6 +969,12 @@ void Operator() {
         return;
     }
     ExpressionOperator();
+    if (types.empty()) {
+        std::string er = "Error";
+        throw er;
+    } else {
+        types.pop();
+    }
     if (curr_lexem.lex != ";") {
         curr_lexem.lex = "Expected ';' after expression operator";
         throw curr_lexem;
@@ -813,7 +1117,7 @@ void Expression() {
         DescriptionOfArray();
         return;
     }*/
-    if (curr_lexem.type == 2) {
+    /*if (curr_lexem.type == 2) {
         //имя
         std::string name;
         //prev_lexem();
@@ -821,23 +1125,85 @@ void Expression() {
         //get_next();
         check_name(name);
 
+        add_to_stack_of_types(name);
+
         get_next();
         if (curr_lexem.lex == "=") {
             Initialization();
+
+            try{
+                if (types.empty()) {
+                    std::string s = "Error";
+                    throw s;
+                }
+                std::string up1_type = types.top();
+                types.pop();
+                if (types.empty()) {
+                    std::string s = "Error";
+                    throw s;
+                }
+                std::string up2_type = types.top();
+                types.pop();
+                std::vector<std::string> temp;
+                temp.push_back(up1_type);
+                temp.push_back(up2_type);
+                match_types(temp, "=");
+            } catch(...) {
+                std::string s = "Error";
+                throw s;
+            }
+
+            //std::string str = types.
+            //type_matching();
             return;
         }
+        types.pop();
         if (curr_lexem.lex == "[") {
             prev_lexem();
             Indexing();
+            if (curr_lexem.lex == "=") {
+                Initialization();
+
+                try{
+                    if (types.empty()) {
+                        std::string s = "Error";
+                        throw s;
+                    }
+                    std::string up1_type = types.top();
+                    types.pop();
+                    if (types.empty()) {
+                        std::string s = "Error";
+                        throw s;
+                    }
+                    std::string up2_type = types.top();
+                    types.pop();
+                    std::vector<std::string> temp;
+                    temp.push_back(up1_type);
+                    temp.push_back(up2_type);
+                    match_types(temp, "=");
+                } catch(...) {
+                    std::string s = "Error";
+                    throw s;
+                }
+
+                //std::string str = types.
+                //type_matching();
+                return;
+            }
+            return;
+
+        } else {
+            prev_lexem();
+            Expression1();
             return;
         }
-        prev_lexem();
-        Expression1();
-        return;
-    }
+
+    }*/
     Expression1();
     return;
 }
+
+
 
 void Expression1() {
     Expression2();
@@ -849,8 +1215,34 @@ void Expression1() {
         if (!is_AssigmentOperation()) {
             return;
         }
+        std::string oper = curr_lexem.lex;
+
         get_next();
         Expression2();
+
+        try{
+            std::vector<std::string> temp;
+            std::string s1, s2;
+            if (types.empty()) {
+                std::string s = "Error";
+                throw s;
+            }
+            s1 = types.top();
+            types.pop();
+            if (types.empty()) {
+                std::string s = "Error";
+                throw s;
+            }
+            s2 = types.top();
+            types.pop();
+            temp.push_back(s1);
+            temp.push_back(s2);
+            match_types(temp, oper);
+        } catch(...) {
+            std::string s = "Error";
+            throw s;
+        }
+
     }
 }
 
@@ -864,8 +1256,34 @@ void Expression2() {
         if (!is_ComparisonOperation()) {
             return;
         }
+        std::string oper = curr_lexem.lex;
         get_next();
         Expression3();
+
+        try{
+            std::vector<std::string> temp;
+            std::string s1, s2;
+            if (types.empty()) {
+                std::string s = "Error";
+                throw s;
+            }
+            s1 = types.top();
+            types.pop();
+            if (types.empty()) {
+                std::string s = "Error";
+                throw s;
+            }
+            s2 = types.top();
+            types.pop();
+            temp.push_back(s1);
+            temp.push_back(s2);
+            match_types(temp, oper);
+        } catch(...) {
+            std::string s = "Error";
+            throw s;
+        }
+
+
     }
 }
 
@@ -888,8 +1306,35 @@ void Expression3() {
         if (!is_AdditionOperation()) {
             return;
         }
+
+        std::string oper = curr_lexem.lex;
+
         get_next();
         Expression4();
+
+        try{
+            std::vector<std::string> temp;
+            std::string s1, s2;
+            if (types.empty()) {
+                std::string s = "Error";
+                throw s;
+            }
+            s1 = types.top();
+            types.pop();
+            if (types.empty()) {
+                std::string s = "Error";
+                throw s;
+            }
+            s2 = types.top();
+            types.pop();
+            temp.push_back(s1);
+            temp.push_back(s2);
+            match_types(temp, oper);
+        } catch(...) {
+            std::string s = "Error";
+            throw s;
+        }
+
     }
 }
 
@@ -911,8 +1356,33 @@ void Expression4() {
         if (!is_MultiplicationOperation()) {
             return;
         }
+        std::string oper = curr_lexem.lex;
         get_next();
         Expression5();
+
+        try{
+            std::vector<std::string> temp;
+            std::string s1, s2;
+            if (types.empty()) {
+                std::string s = "Error";
+                throw s;
+            }
+            s1 = types.top();
+            types.pop();
+            if (types.empty()) {
+                std::string s = "Error";
+                throw s;
+            }
+            s2 = types.top();
+            types.pop();
+            temp.push_back(s1);
+            temp.push_back(s2);
+            match_types(temp, oper);
+        } catch(...) {
+            std::string s = "Error";
+            throw s;
+        }
+
     }
 }
 
@@ -933,8 +1403,33 @@ void Expression5() {
         if (!is_PowOperation()) {
             return;
         }
+        std::string oper = curr_lexem.lex;
+
         get_next();
         Expression6();
+        try{
+            std::vector<std::string> temp;
+            std::string s1, s2;
+            if (types.empty()) {
+                std::string s = "Error";
+                throw s;
+            }
+            s1 = types.top();
+            types.pop();
+            if (types.empty()) {
+                std::string s = "Error";
+                throw s;
+            }
+            s2 = types.top();
+            types.pop();
+            temp.push_back(s1);
+            temp.push_back(s2);
+            match_types(temp, oper);
+        } catch(...) {
+            std::string s = "Error";
+            throw s;
+        }
+
     }
 }
 
@@ -962,14 +1457,44 @@ void Expression6() {
             return;
         }
         prev_lexem();
+        //add_to_stack_of_types(name);
+        //return;
     }
     if (curr_lexem.lex == "++" || curr_lexem.lex == "--") {
         get_next();
         Atom();
+        try{
+            std::vector<std::string> temp;
+            if (types.empty()) {
+                std::string s = "Error";
+                throw s;
+            }
+            temp.push_back(types.top());
+            types.pop();
+            match_types(temp, "++");
+        } catch(...) {
+            std::string s = "Error";
+            throw s;
+        }
+
         return;
     }
     Atom();
     if (curr_lexem.lex == "++" || curr_lexem.lex == "--") {
+        try{
+            std::vector<std::string> temp;
+            if (types.empty()) {
+                std::string s = "Error";
+                throw s;
+            }
+            temp.push_back(types.top());
+            types.pop();
+            match_types(temp, "++");
+        } catch(...) {
+            std::string s = "Error";
+            throw s;
+        }
+
         get_next();
     }
     return;
@@ -1014,6 +1539,8 @@ void Atom() {
         FunctionCall();
         return;
     }
+
+    add_to_stack_of_types(name);
     return;
 }
 
@@ -1034,6 +1561,8 @@ void Indexing() {
     get_next();
     check_name(name);
 
+    add_to_stack_of_types(name);
+
     if (curr_lexem.lex != "[") {
         curr_lexem.lex = "To refer to an element of an array, "
                          "use the operator '[' and ']'";
@@ -1041,11 +1570,43 @@ void Indexing() {
     }
     get_next();
     Expression();
+
     if (curr_lexem.lex != "]") {
         curr_lexem.lex = "To refer to an element of an array, "
                          "use the operator '[' and ']'";
         throw curr_lexem;
     }
+    std::string s;
+    try{
+        if (types.empty()) {
+            std::string s = "Error";
+            throw s;
+        }
+        s = types.top();
+        types.pop();
+    } catch(...) {
+        std::string s = "Error";
+        throw s;
+    }
+
+    if (s != "int") {
+        std::string error = "Inside [ ] must be an integer";
+        throw error;
+    }
+    try{
+        if (types.empty()) {
+            std::string s = "Error";
+            throw s;
+        }
+        s = types.top();
+        types.pop();
+        match_types({s}, "[]");
+    } catch(...) {
+        std::string s = "Error";
+        throw s;
+    }
+
+
     get_next();
     while (true) {
         if (curr_lexem.lex != "[") {
@@ -1058,6 +1619,35 @@ void Indexing() {
                              "use the operator '[' and ']'";
             throw curr_lexem;
         }
+        try{
+            if (types.empty()) {
+                std::string s = "Error";
+                throw s;
+            }
+            s = types.top();
+            types.pop();
+        } catch (...) {
+            std::string s = "Error";
+            throw s;
+        }
+
+        if (s != "int") {
+            std::string error = "Inside [ ] must be an integer";
+            throw error;
+        }
+        try{
+            if (types.empty()) {
+                std::string s = "Error";
+                throw s;
+            }
+            s = types.top();
+            types.pop();
+            match_types({s}, "[]");
+        } catch (...) {
+            std::string s = "Error";
+            throw s;
+        }
+
         get_next();
     }
     return;
@@ -1067,6 +1657,19 @@ void Const() {
     if (curr_lexem.lex == "!") {
         get_next();
         Atom();
+        try{
+            if (types.empty()) {
+                std::string s = "Error";
+                throw s;
+            }
+            std::string s = types.top();
+            types.pop();
+            match_types({s}, "!");
+        } catch (...) {
+            std::string s = "Error";
+            throw s;
+        }
+
         return;
     }
     if (curr_lexem.lex == "true" || curr_lexem.lex == "false") {
@@ -1077,8 +1680,9 @@ void Const() {
 }
 
 void FunctionCall() {
+    //is_now_func = true;
     Name();
-
+    int count_of_params = 0;
     std::string name;
     prev_lexem();
     name = curr_lexem.lex;
@@ -1091,10 +1695,12 @@ void FunctionCall() {
     }
     get_next();
     if (curr_lexem.lex == ")") {
+        match_types({name}, "()");
         get_next();
         return;
     }
     Expression();
+    ++count_of_params;
     while (true) {
         if (curr_lexem.lex != ",") {
             break;
@@ -1105,8 +1711,30 @@ void FunctionCall() {
             throw curr_lexem;
         }
         Expression();
+        ++count_of_params;
     }
     if (curr_lexem.lex == ")") {
+        //if (count_of_params)
+        //Function c;
+        //Function curr_func;
+        if (find_function(name).count_of_parameters != count_of_params) {
+            std::string s = "Incorrect number of function params";
+            throw s;
+        }
+        std::vector<std::string> temp;
+        temp.push_back(name);
+        for (int i = 0; i < count_of_params; ++i) {
+            std::string s;
+            if (types.empty()) {
+                std::string error = "Missing function params";
+                throw s;
+            } else {
+                s = types.top();
+                types.pop();
+                temp.push_back(s);
+            }
+        }
+        match_types(temp, "()");
         get_next();
         return;
     }
@@ -1130,16 +1758,16 @@ void Constant() {
         curr_lexem.lex = "Incorrect constant";
         throw curr_lexem;
     }
-    get_next();
-    if (curr_lexem.lex == ".") {
-        get_next();
-        if (!is_number()) {
-            curr_lexem.lex = "Incorrect constant";
-            throw curr_lexem;
-        }
+
+    std::string tp = "int";
+    if (curr_lexem.lex.find(".") != -1) {
+        tp = "double";
+        types.push(tp);
         get_next();
         return;
     }
+    get_next();
+    types.push("int");
     return;
 }
 
@@ -1149,6 +1777,7 @@ void Boolean() {
         throw curr_lexem;
     }
     get_next();
+    types.push("bool");
     return;
 }
 
@@ -1166,6 +1795,7 @@ void AnyString() {
         throw curr_lexem;
     }
     get_next();
+    types.push("anystring");
     return;
 }
 
@@ -1176,6 +1806,7 @@ void AnySymbol() {
         throw curr_lexem;
     }
     get_next();
+    types.push("symbol");
     return;
 }
 
@@ -1197,14 +1828,35 @@ void FOR() {
     } else {
         if (is_type()) {
             Description();
+            /*try{
+                if (types.empty()) {
+                    std::string s = "Error";
+                    throw s;
+                }
+                types.pop();
+            } catch (...){
+                std::string s = "Error";
+                throw s;
+            }*/
         } else {
             Expression();
             if (curr_lexem.lex != ";") {
                 curr_lexem.lex = "Incorrect structure of the 'for' operator";
                 throw curr_lexem;
             }
+            try{
+                if (types.empty()) {
+                    std::string s = "Error";
+                    throw s;
+                }
+                types.pop();
+            } catch (...){
+                std::string s = "Error";
+                throw s;
+            }
             get_next();
         }
+
     }
 
     if (curr_lexem.lex == ";") {
@@ -1215,6 +1867,16 @@ void FOR() {
             curr_lexem.lex = "Incorrect structure of the 'for' operator";
             throw curr_lexem;
         }
+        try{
+            if (types.empty()) {
+                std::string s = "Error";
+                throw s;
+            }
+            types.pop();
+        } catch (...){
+            std::string s = "Error";
+            throw s;
+        }
         get_next();
     }
     if (curr_lexem.lex == ")") {
@@ -1224,6 +1886,16 @@ void FOR() {
         if (curr_lexem.lex != ")") {
             curr_lexem.lex = "Operator execution conditions must be in '(' and ')'";
             throw curr_lexem;
+        }
+        try{
+            if (types.empty()) {
+                std::string s = "Error";
+                throw s;
+            }
+            types.pop();
+        } catch (...){
+            std::string s = "Error";
+            throw s;
         }
         get_next();
     }
@@ -1249,6 +1921,16 @@ void WHILE() {
         return;
     }
     Expression();
+    try{
+        if (types.empty()) {
+            std::string s = "Error";
+            throw s;
+        }
+        types.pop();
+    } catch (...){
+        std::string s = "Error";
+        throw s;
+    }
     if (curr_lexem.lex == ")") {
         get_next();
         Block();
@@ -1289,6 +1971,16 @@ void DOWHILE() {
         return;
     }
     Expression();
+    try{
+        if (types.empty()) {
+            std::string s = "Error";
+            throw s;
+        }
+        types.pop();
+    } catch (...){
+        std::string s = "Error";
+        throw s;
+    }
     if (curr_lexem.lex != ")") {
         curr_lexem.lex = "Operator execution conditions must be in '(' and ')'";
         throw curr_lexem;
@@ -1310,6 +2002,20 @@ void RETURN() {
     }
     get_next();
     Expression();
+    if (is_now_func) {
+        is_now_func = false;
+        if (types.empty()) {
+            std::string er = "No return";
+            throw er;
+        } else {
+            std::string s = types.top();
+            types.pop();
+            if (s != func_type) {
+                std::string er = "Bad return type";
+                throw er;
+            }
+        }
+    }
     return;
 }
 
@@ -1334,7 +2040,7 @@ void FOREACH() {
         throw curr_lexem;
     }
     get_next();
-    std::string type, name;
+    std::string type, name, first, second;
 
     Type();
 
@@ -1346,9 +2052,11 @@ void FOREACH() {
 
     prev_lexem();
     curr_variable.name = curr_lexem.lex;
+    first = curr_variable.name;
     get_next();
 
     add_variable();
+
 
     if (curr_lexem.lex != "in") {
         curr_lexem.lex = "Incorrect structure of the 'foreach' operator, "
@@ -1358,16 +2066,21 @@ void FOREACH() {
     get_next();
     Name();
 
+
     //std::string name;
     prev_lexem();
     name = curr_lexem.lex;
     get_next();
     check_name(name);
+    second = name;
+
+
 
     if (curr_lexem.lex != ")") {
         curr_lexem.lex = "Operator execution conditions must be in '(' and ')'";
         throw curr_lexem;
     }
+    match_types({first, second}, "in");
     get_next();
     Block();
     delete_tid();
@@ -1387,6 +2100,17 @@ void ELSEIF() {
     }
     get_next();
     Expression();
+    try{
+        if (types.empty()) {
+            std::string s = "Error";
+            throw s;
+        }
+        types.pop();
+    } catch (...){
+        std::string s = "Error";
+        throw s;
+    }
+
     if (curr_lexem.lex != ")") {
         curr_lexem.lex = "Operator execution conditions must be in '(' and ')'";
         throw curr_lexem;
@@ -1415,6 +2139,16 @@ void OutputElement() {
         return;
     }
     Expression();
+    try{
+        if (types.empty()) {
+            std::string s = "Error";
+            throw s;
+        }
+        types.pop();
+    } catch (...){
+        std::string s = "Error";
+        throw s;
+    }
     return;
 }
 

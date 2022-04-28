@@ -53,6 +53,8 @@ int main() {
         std::cout << "Ошибка ввода";
     } catch (std::string s) {
         std::cout << s;
+    } catch(...) {
+        std::cout << "ERROR!!!!!";
     }
 
     return 0;
